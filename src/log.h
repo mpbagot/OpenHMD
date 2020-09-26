@@ -15,7 +15,7 @@ void* ohmd_allocfn(ohmd_context* ctx, const char* e_msg, size_t size);
 #define ohmd_alloc(_ctx, _size) ohmd_allocfn(_ctx, "could not allocate " #_size " bytes of RAM @ " __FILE__ ":" OHMD_STRINGIFY(__LINE__), _size)
 
 #ifndef LOGLEVEL
-#define LOGLEVEL 2
+#define LOGLEVEL 0
 #endif
 
 #define LOG(_level, _levelstr, ...) do{ if(_level >= LOGLEVEL){ printf("[%s] ", (_levelstr)); printf(__VA_ARGS__); puts(""); } } while(0)

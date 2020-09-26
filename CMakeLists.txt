@@ -107,14 +107,18 @@ endif(OPENHMD_DRIVER_WMR)
 
 if(OPENHMD_DRIVER_PSVR)
 	set(openhmd_source_files ${openhmd_source_files}
-	${CMAKE_CURRENT_LIST_DIR}/src/drv_psvr/psvr.c
-	${CMAKE_CURRENT_LIST_DIR}/src/drv_psvr/packet.c
+	${CMAKE_CURRENT_LIST_DIR}/src/drv_psvr/psvr.cpp
+	${CMAKE_CURRENT_LIST_DIR}/src/drv_psvr/packet.cpp
+	${CMAKE_CURRENT_LIST_DIR}/src/drv_psvr/controller.cpp
+	${CMAKE_CURRENT_LIST_DIR}/src/drv_psvr/psmove.cpp
 	)
 	add_definitions(-DDRIVER_PSVR)
 
 	find_package(HIDAPI REQUIRED)
 	include_directories(${HIDAPI_INCLUDE_DIRS})
-	set(LIBS ${LIBS} ${HIDAPI_LIBRARIES})
+	include_directories(/usr/include/ni)
+	include_directories(/usr/local/include/psmoveapi)
+	set(LIBS ${LIBS} ${HIDAPI_LIBRARIES} -lpsmoveapi -lOpenNI)
 endif(OPENHMD_DRIVER_PSVR)
 
 if(OPENHMD_DRIVER_HTC_VIVE)
