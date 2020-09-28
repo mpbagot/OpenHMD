@@ -8,6 +8,8 @@
 
 #define FEATURE_BUFFER_SIZE	49
 
+#define MOVE_DOUBLE_PRESS_THRESHOLD 200
+
 #define TICK_LEN		1e-7 // 0.1 µs ticks
 
 #include "psvr.h"
@@ -34,6 +36,8 @@ typedef struct {
 	vec3f raw_gyro;
 	quatf orient, trackpad_init_orient;
 	double last_set_led;
+	long last_release_move;
+	bool move_is_touch;
 	psmove_packet sensor;
 } controller_priv;
 
@@ -60,6 +64,19 @@ static void quat_to_euler(quatf q, float *roll, float *pitch, float* yaw) {
         double cosy_cosp = 1 - 2 * (q.y * q.y + q.z * q.z);
         *yaw = std::atan2(siny_cosp, cosy_cosp);
     }
+}
+
+static int psmove_set_data(ohmd_device* device, ohmd_data_value type, const void* in) {
+		if (type == OHMD_DRIVER_DATA) {
+				controller_priv* priv = (controller_priv*)device;
+				if (in == NULL) {
+					psmove_set_rumble(priv->move_handle, 0);
+				} else {
+					psmove_set_rumble(priv->move_handle, *(unsigned char*)in);
+				}
+				return -psmove_update_leds(priv->move_handle);
+		}
+		return 0;
 }
 
 static void psmove_update_device(ohmd_device* device)
@@ -98,6 +115,11 @@ static void psmove_update_device(ohmd_device* device)
 		if (pressed & Btn_MOVE) {
 				// Memcpy the current orientation to the trackpad variable
 				memcpy(&priv->trackpad_init_orient, &priv->orient, sizeof(quatf));
+
+				// If the time since the last release is below the threshold, set this press as a trackpad touch
+				if (psmove_util_get_ticks() - priv->last_release_move < MOVE_DOUBLE_PRESS_THRESHOLD) {
+						priv->move_is_touch = true;
+				}
 		}
 
 		// Clear the trackpad intitial orientation
@@ -108,6 +130,16 @@ static void psmove_update_device(ohmd_device* device)
 				// Also, reset trackpad position
 				priv->sensor.trackpad[0] = 0.0f;
 				priv->sensor.trackpad[1] = 0.0f;
+
+				// Set release time if unset, or clear it if set
+				if (priv->last_release_move == -1) {
+						priv->last_release_move = psmove_util_get_ticks();
+				} else {
+						priv->last_release_move = -1;
+				}
+
+				// Set to False
+				priv->move_is_touch = false;
 		}
 
 		// Once the initial orientation is set, update the trackpad if the move button is held
@@ -132,6 +164,9 @@ static void psmove_update_device(ohmd_device* device)
 
 				priv->sensor.trackpad[0] = x;
 				priv->sensor.trackpad[1] = y;
+		} else if (psmove_util_get_ticks() - priv->last_release_move > MOVE_DOUBLE_PRESS_THRESHOLD) {
+				// Reset release timer if the button is not currently held, and too much time has passed
+				priv->last_release_move = -1;
 		}
 	}
 
@@ -170,8 +205,6 @@ static void psmove_update_device(ohmd_device* device)
 		priv->base.position.x += conf * ((handJoint.position.X - calib_point.x) / 1000.0f);
 		priv->base.position.y += conf * (1.8f + (handJoint.position.Y - calib_point.y) / 1000.0f);
 		priv->base.position.z += conf * ((handJoint.position.Z - calib_point.z) / 1000.0f);
-
-		printf("update_device: X: %f, Y: %f, Z: %f\n", priv->base.position.x, priv->base.position.y, priv->base.position.z);
 	}
 
 	if(size < 0){
@@ -211,7 +244,7 @@ static int psmove_getf(ohmd_device* device, ohmd_float_value type, float* out)
 		out[7] = !!(priv->sensor.buttons & Btn_MOVE);
 		out[8] = priv->sensor.trigger[0] / 255.0;
 		out[9] = priv->sensor.trigger[0] > 205; // Trigger click
-		out[10] = !!(priv->sensor.buttons & Btn_MOVE); // TODO Trackpad click
+		out[10] = !(priv->move_is_touch); // TODO Trackpad click
 		out[11] = priv->sensor.trackpad[0]; // Trackpad X
 		out[12] = priv->sensor.trackpad[1]; // Trackpad Y
 		break;
@@ -307,8 +340,12 @@ ohmd_device* open_psmove_device(ohmd_driver* driver, ohmd_device_desc* desc)
 	priv->base.update = psmove_update_device;
 	priv->base.close = psmove_close_device;
 	priv->base.getf = psmove_getf;
+	priv->base.set_data = psmove_set_data;
 
 	ofusion_init(&priv->sensor_fusion);
+
+	// Init the last release time
+	priv->last_release_move = -1;
 
 	return (ohmd_device*)priv;
 
