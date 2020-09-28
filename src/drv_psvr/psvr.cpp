@@ -98,18 +98,13 @@ void FindPlayer()
 	}
 }
 
-void LostPlayer()
-{
-	g_nPlayer = 0;
-	FindPlayer();
-}
-
 void XN_CALLBACK_TYPE LostUser(xn::UserGenerator& generator, XnUserID user, void* pCookie)
 {
 	printf("Lost user %d\n", user);
 	if (g_nPlayer == user)
 	{
-		LostPlayer();
+		g_nPlayer = 0;
+		FindPlayer();
 	}
 }
 void XN_CALLBACK_TYPE PoseDetected(xn::PoseDetectionCapability& pose, const XnChar* strPose, XnUserID user, void* cxt)
@@ -121,8 +116,6 @@ void XN_CALLBACK_TYPE PoseDetected(xn::PoseDetectionCapability& pose, const XnCh
 
 void XN_CALLBACK_TYPE CalibrationCompleted(xn::SkeletonCapability& skeleton, XnUserID user, XnCalibrationStatus eStatus, void* cxt)
 {
-	//NOTE Need to store hmd position and then update later positions relative to this
-
 	printf("Calibration done [%d] %ssuccessfully\n", user, (eStatus == XN_CALIBRATION_STATUS_OK)?"":"un");
 	if (eStatus == XN_CALIBRATION_STATUS_OK)
 	{
@@ -267,8 +260,12 @@ static void update_device(ohmd_device* device)
 		if (com.Z == 0)
 		{
 			g_nPlayer = 0;
-			FindPlayer();
 		}
+	}
+
+	// Find a player to track if there's no currently tracked player (but only if a play has previously been tracked)
+	if (g_nPlayer == 0 && g_bCalibrated) {
+			FindPlayer();
 	}
 
 	if (g_nPlayer) {
@@ -305,8 +302,6 @@ static void update_device(ohmd_device* device)
 		priv->base.position.x += conf * ((headJoint.position.X - calib_point.x) / 1000.0f);
 		priv->base.position.y += conf * (1.8f + (headJoint.position.Y - calib_point.y) / 1000.0f);
 		priv->base.position.z += conf * ((headJoint.position.Z - calib_point.z) / 1000.0f);
-
-		printf("update_device: X: %f, Y: %f, Z: %f\n", priv->base.position.x, priv->base.position.y, priv->base.position.z);
 	}
 
 	if(size < 0){
@@ -526,8 +521,6 @@ static ohmd_device* open_hmd_device(ohmd_driver* driver, ohmd_device_desc* desc)
 
 	ofusion_init(&priv->sensor_fusion);
 
-  printf("MADE IT TO HERE XOXOXOX\n");
-
 	return (ohmd_device*)priv;
 
 cleanup:
@@ -570,8 +563,6 @@ static void get_device_list(ohmd_driver* driver, ohmd_device_list* list)
 {
 	struct hid_device_info* devs = hid_enumerate(SONY_ID, 0);
 	struct hid_device_info* cur_dev = devs;
-
-	printf("In device list loop\n");
 
 	// Loop HID devices to find stuff
 	int id = 0, hmd_idx = 0, controller_idx = 0, psmove_idx = 0;
@@ -637,16 +628,11 @@ static void get_device_list(ohmd_driver* driver, ohmd_device_list* list)
 
 	hid_free_enumeration(devs);
 
-	printf("openhmd: At psmove loop\n");
-
 	if (psmove_init(PSMOVE_CURRENT_VERSION)) {
-		printf("openhmd: psmove inited correctly\n");
 
 		// Then, loop psmoveapi devices
 		int count = psmove_count_connected();
-		printf("Found %d controllers\n", count);
 		for (int i = count - 1; i >= 0; i--) {
-			printf("openhmd: looking at controller %d to set as device %d\n", i, list->num_devices);
 			ohmd_device_desc* desc = &list->devices[list->num_devices++];
 
 			strcpy(desc->driver, "OpenHMD Sony PlayStation Move controller driver");
